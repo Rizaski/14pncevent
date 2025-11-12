@@ -63,14 +63,19 @@ body {
 /* Header */
 .header {
     background: var(--gradient-primary-simple);
-    border-radius: var(--radius-xl);
+    border-radius: 0;
     padding: 1.5rem 2rem;
-    margin-bottom: 1.5rem;
+    margin-bottom: 0;
     box-shadow: var(--shadow-xl);
     width: 100%;
     box-sizing: border-box;
     border: 1px solid var(--border-light);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(10px);
 }
+
 
 .header-content {
     display: flex;
@@ -128,9 +133,25 @@ body {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    margin: 0;
 }
 
 .app-subtitle svg {
+    flex-shrink: 0;
+    opacity: 0.8;
+}
+
+.app-subtitle-location {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.9);
+    font-weight: 400;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.25rem 0 0 0;
+}
+
+.app-subtitle-location svg {
     flex-shrink: 0;
     opacity: 0.8;
 }
@@ -202,6 +223,7 @@ body {
     display: flex;
     gap: 0.5rem;
     margin-bottom: 1.5rem;
+    margin-top: 0;
     background: var(--bg-primary);
     padding: 0.5rem;
     border-radius: var(--radius-lg);
@@ -210,6 +232,10 @@ body {
     scrollbar-width: none;
     width: 100%;
     box-sizing: border-box;
+    position: sticky;
+    top: calc(var(--header-height, 120px));
+    z-index: 99;
+    backdrop-filter: blur(10px);
 }
 
 .tabs-nav::-webkit-scrollbar {
@@ -633,23 +659,23 @@ body {
 
 .location-badge {
     display: inline-block;
-    padding: 0.35rem 0.75rem;
-    border-radius: var(--radius-lg);
+    padding: 0.25rem 0.625rem;
+    border-radius: var(--radius-sm);
     font-size: 0.8rem;
     font-weight: 500;
     white-space: nowrap;
 }
 
 .location-badge.dhuvaafaru {
-    background: var(--bg-quaternary);
+    background: rgba(0, 105, 170, 0.1);
     color: var(--primary-color);
-    border: 1px solid rgba(0, 105, 170, 0.3);
+    border: 1px solid rgba(0, 105, 170, 0.2);
 }
 
 .location-badge.male {
-    background: #fff3e0;
-    color: var(--accent-dark);
-    border: 1px solid #ffb74d;
+    background: rgba(245, 128, 37, 0.1);
+    color: var(--accent-color);
+    border: 1px solid rgba(245, 128, 37, 0.2);
 }
 
 /* Map Section */
@@ -1085,7 +1111,7 @@ body {
 
 .participant-details-grid {
     display: grid;
-    gap: 1.25rem;
+    gap: 0.75rem;
     max-height: calc(100vh - 300px);
     overflow-y: auto;
     padding-right: 0.5rem;
@@ -1111,49 +1137,46 @@ body {
 
 .detail-item {
     display: grid;
-    grid-template-columns: 180px 1fr;
-    gap: 1.25rem;
-    align-items: start;
-    padding: 1.25rem;
-    background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
-    border-radius: var(--radius-lg);
-    border-left: 4px solid var(--primary-color);
-    box-shadow: var(--shadow-sm);
-    transition: all 0.3s ease;
+    grid-template-columns: 160px 1fr;
+    gap: 1rem;
+    align-items: center;
+    padding: 0.875rem 1rem;
+    background: var(--bg-primary);
+    border-radius: var(--radius-sm);
+    border-bottom: 1px solid var(--border-color);
+    transition: background-color 0.2s ease;
 }
 
 .detail-item:hover {
-    box-shadow: var(--shadow-md);
-    transform: translateX(4px);
-    border-left-color: var(--primary-light);
+    background: var(--bg-secondary);
 }
 
 .detail-label {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    font-weight: 600;
-    font-size: 0.9rem;
-    color: var(--text-primary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    padding: 0.5rem 0;
+    gap: 0.5rem;
+    font-weight: 500;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    padding: 0;
 }
 
 .detail-label svg {
-    color: var(--primary-color);
+    color: var(--text-secondary);
     flex-shrink: 0;
-    opacity: 0.9;
+    opacity: 0.7;
+    width: 16px;
+    height: 16px;
 }
 
 .detail-value {
-    font-size: 1rem;
+    font-size: 0.95rem;
     color: var(--text-primary);
-    font-weight: 500;
+    font-weight: 400;
     word-break: break-word;
     text-align: left;
-    line-height: 1.6;
-    padding: 0.5rem 0;
+    line-height: 1.5;
+    padding: 0;
 }
 
 .detail-navigation-info {
@@ -1200,21 +1223,21 @@ body {
 /* Detail Input Fields */
 .detail-input {
     width: 100%;
-    padding: 0.75rem;
-    border: 2px solid var(--border-color);
-    border-radius: var(--radius-md);
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
     font-family: 'Poppins', sans-serif;
-    font-size: 1rem;
+    font-size: 0.95rem;
     color: var(--text-primary);
     background: var(--bg-primary);
-    transition: all 0.3s ease;
+    transition: border-color 0.2s ease;
     box-sizing: border-box;
 }
 
 .detail-input:focus {
     outline: none;
     border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px rgba(0, 105, 170, 0.1);
+    box-shadow: 0 0 0 2px rgba(0, 105, 170, 0.08);
 }
 
 .detail-input::placeholder {
@@ -1558,10 +1581,10 @@ body {
 
     .header {
         padding: 1rem 1.25rem;
-        margin-bottom: 1rem;
+        margin-bottom: 0;
         margin-left: 0;
         margin-right: 0;
-        border-radius: var(--radius-lg);
+        border-radius: 0;
     }
 
     .header-content {
@@ -1595,9 +1618,23 @@ body {
     .app-subtitle {
         font-size: 0.8rem;
         flex-wrap: wrap;
+        display: block;
     }
 
     .app-subtitle svg {
+        width: 14px;
+        height: 14px;
+    }
+
+    .app-subtitle-location {
+        font-size: 0.8rem;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        margin-top: 0.25rem;
+    }
+
+    .app-subtitle-location svg {
         width: 14px;
         height: 14px;
     }
@@ -1845,8 +1882,8 @@ body {
 
     .detail-item {
         grid-template-columns: 1fr;
-        gap: 0.5rem;
-        padding: 0.85rem;
+        gap: 0.4rem;
+        padding: 0.75rem;
     }
 
     .detail-label {
@@ -1854,12 +1891,12 @@ body {
     }
 
     .detail-label svg {
-        width: 16px;
-        height: 16px;
+        width: 14px;
+        height: 14px;
     }
 
     .detail-value {
-        font-size: 0.9rem;
+        font-size: 0.875rem;
         text-align: left;
     }
 
@@ -1935,9 +1972,23 @@ body {
 
     .app-subtitle {
         font-size: 0.75rem;
+        display: block;
     }
 
     .app-subtitle svg {
+        width: 12px;
+        height: 12px;
+    }
+
+    .app-subtitle-location {
+        font-size: 0.75rem;
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        margin-top: 0.2rem;
+    }
+
+    .app-subtitle-location svg {
         width: 12px;
         height: 12px;
     }
@@ -2146,7 +2197,8 @@ body {
     }
 
     .detail-item {
-        padding: 0.75rem;
+        padding: 0.625rem;
+        gap: 0.3rem;
     }
 
     .detail-label {
@@ -2154,12 +2206,12 @@ body {
     }
 
     .detail-label svg {
-        width: 14px;
-        height: 14px;
+        width: 12px;
+        height: 12px;
     }
 
     .detail-value {
-        font-size: 0.85rem;
+        font-size: 0.8rem;
     }
 
     .modal-content {

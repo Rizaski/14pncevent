@@ -1,4 +1,4 @@
-// Application State
+﻿// Application State
 const AppState = {
     participants: [],
     currentTab: 'master',
@@ -42,7 +42,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     filterAndRenderParticipants();
     checkAdminStatus();
     initializeMap();
+
+    // Set header height for sticky tabs positioning
+    updateStickyHeaderHeight();
+    window.addEventListener('resize', updateStickyHeaderHeight);
 });
+
+// Update sticky header height for tabs positioning
+function updateStickyHeaderHeight() {
+    const header = document.querySelector('.header');
+    if (header) {
+        // Get the actual rendered height of the header
+        const headerRect = header.getBoundingClientRect();
+        const headerHeight = headerRect.height;
+        // Set the CSS variable for tabs positioning (add 1px buffer to prevent overlap)
+        document.documentElement.style.setProperty('--header-height', `${headerHeight}px`);
+    }
+}
 
 // Wait for Firebase to be available
 function waitForFirebase() {
@@ -227,7 +243,7 @@ async function loadParticipantsFromFirestore() {
             // Clear localStorage to prevent stale cache from being used
             localStorage.removeItem('dhuvaafaru_participants');
             AppState.participants = [];
-            console.log('✅ Firestore is empty - cleared cache and set participants to empty array');
+            console.log('? Firestore is empty - cleared cache and set participants to empty array');
         } else {
             AppState.participants = snapshot.docs.map(doc => {
                 const data = doc.data();
@@ -243,7 +259,7 @@ async function loadParticipantsFromFirestore() {
                 // If Firestore has no participants, clear cache
                 localStorage.removeItem('dhuvaafaru_participants');
             }
-            console.log(`✅ Loaded ${AppState.participants.length} participants from Firestore`);
+            console.log(`? Loaded ${AppState.participants.length} participants from Firestore`);
         }
     } catch (error) {
         // Check if it's a permissions error
@@ -322,7 +338,7 @@ async function saveParticipantsToFirestore() {
             localStorage.removeItem('dhuvaafaru_participants');
         }
 
-        console.log(`✅ Successfully saved ${AppState.participants.length} participants to Firestore`);
+        console.log(`? Successfully saved ${AppState.participants.length} participants to Firestore`);
     } catch (error) {
         // Check if it's a permissions error
         if (error.code === 'permission-denied' || error.message.includes('permissions') || error.message.includes('Missing or insufficient permissions')) {
@@ -346,7 +362,7 @@ function loadParticipantsFromLocalStorage() {
     if (stored) {
         try {
             AppState.participants = JSON.parse(stored);
-            console.log(`✅ Loaded ${AppState.participants.length} participants from localStorage`);
+            console.log(`? Loaded ${AppState.participants.length} participants from localStorage`);
         } catch (e) {
             console.error('Error loading participants:', e);
             AppState.participants = [];
@@ -526,9 +542,7 @@ function initializeEventListeners() {
         hideParticipantDetails();
     });
 
-    document.getElementById('closeDetailsBtn').addEventListener('click', () => {
-        hideParticipantDetails();
-    });
+    // Close button removed - users can close by clicking outside the modal or pressing Escape
 
     document.getElementById('participantDetailsModal').addEventListener('click', (e) => {
         if (e.target.id === 'participantDetailsModal') {
@@ -1290,7 +1304,7 @@ async function parseExcelData(jsonData) {
             const locLower = atoll.toString().toLowerCase();
             if (locLower.includes('dhuvaafaru') || locLower.includes('dhuvafaru')) {
                 normalizedLocation = 'Dhuvaafaru';
-            } else if (locLower.includes("male") || locLower.includes("malé")) {
+            } else if (locLower.includes("male") || locLower.includes("mal�")) {
                 normalizedLocation = "Male'";
             } else {
                 normalizedLocation = atoll.toString();
@@ -1461,7 +1475,7 @@ function renderParticipantDetails(participant) {
         {
             key: 'atoll',
             label: 'Atoll / Island',
-            value: participant.atoll || participant.island || participant.location || ''
+            value: participant.atoll || participant.island || 'Raa. Dhuvaafaru'
         },
         {
             key: 'dhaaira',
@@ -1476,7 +1490,7 @@ function renderParticipantDetails(participant) {
         {
             key: 'speedBoat',
             label: 'Speed Boat',
-            value: participant.speedBoat || participant['Speed Boat'] || participant['speed boat'] || participant['SpeedBoat'] || ''
+            value: participant.speedBoat || participant['Speed Boat'] || participant['speed boat'] || participant['SpeedBoat'] || 'XSpeed'
         }
     ];
 
@@ -1489,12 +1503,26 @@ function renderParticipantDetails(participant) {
     const renderField = (value, fieldKey, fieldLabel) => {
         if (isEditable) {
             if (fieldKey === 'atoll') {
-                // Dropdown for Atoll / Island
+                // Atoll / Island - text input with default value
+                return `<input type="text" class="detail-input" name="atoll" id="detail-atoll" value="${escapeHtml(value || 'Raa. Dhuvaafaru')}" placeholder="Enter Atoll / Island">`;
+            } else if (fieldKey === 'location') {
+                // Dropdown for Location
                 return `
-                    <select class="detail-input" name="atoll" id="detail-atoll">
+                    <select class="detail-input" name="location" id="detail-location">
                         <option value="">Select Location</option>
                         <option value="Dhuvaafaru" ${value === 'Dhuvaafaru' ? 'selected' : ''}>Dhuvaafaru</option>
                         <option value="Male'" ${value === "Male'" ? 'selected' : ''}>Male'</option>
+                    </select>
+                `;
+            } else if (fieldKey === 'speedBoat') {
+                // Dropdown for Speed Boat
+                return `
+                    <select class="detail-input" name="otherBoat" id="detail-otherBoat">
+                        <option value="">Select Other Boat</option>
+                        <option value="Boat 1" ${value === 'Boat 1' ? 'selected' : ''}>Boat 1</option>
+                        <option value="Boat 2" ${value === 'Boat 2' ? 'selected' : ''}>Boat 2</option>
+                        <option value="Boat 3" ${value === 'Boat 3' ? 'selected' : ''}>Boat 3</option>
+                        <option value="None" ${value === 'None' ? 'selected' : ''}>None</option>
                     </select>
                 `;
             } else if (fieldKey === 'number') {
@@ -1505,7 +1533,7 @@ function renderParticipantDetails(participant) {
                 return `<input type="text" class="detail-input" name="${fieldKey}" id="detail-${fieldKey}" value="${escapeHtml(value || '')}" placeholder="Enter ${fieldLabel}">`;
             }
         } else {
-            if (fieldKey === 'atoll') {
+            if (fieldKey === 'location') {
                 return `<span class="location-badge ${locationClass}">${escapeHtml(value || '-')}</span>`;
             }
             return escapeHtml(value || '-');
@@ -1528,23 +1556,25 @@ function renderParticipantDetails(participant) {
         return icons[fieldKey] || '<circle cx="12" cy="12" r="3"></circle>';
     };
 
-    // Generate HTML for specified fields only
-    const fieldsHTML = fieldsToShow.map(field => {
-        const fieldValue = getFieldValue(field);
-        const iconSvg = getFieldIcon(field.key);
+    // Generate HTML for specified fields only (excluding dhaaira)
+    const fieldsHTML = fieldsToShow
+        .filter(field => field.key !== 'dhaaira') // Hide Dhuvaafaru Dhaairaa field
+        .map(field => {
+            const fieldValue = getFieldValue(field);
+            const iconSvg = getFieldIcon(field.key);
 
-        return `
-            <div class="detail-item">
-                <div class="detail-label">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        ${iconSvg}
-                    </svg>
-                    ${field.label}
+            return `
+                <div class="detail-item">
+                    <div class="detail-label">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            ${iconSvg}
+                        </svg>
+                        ${field.label}
+                    </div>
+                    <div class="detail-value">${renderField(fieldValue, field.key, field.label)}</div>
                 </div>
-                <div class="detail-value">${renderField(fieldValue, field.key, field.label)}</div>
-            </div>
-        `;
-    }).join('');
+            `;
+        }).join('');
 
     contentElement.innerHTML = fieldsHTML || '<div class="detail-item"><div class="detail-label">No data</div><div class="detail-value">-</div></div>';
 }
@@ -1738,16 +1768,17 @@ async function saveParticipant() {
     }
 
     // Handle aliases and special fields
-    const atoll = participantData.atoll || '';
+    const atoll = participantData.atoll || 'Raa. Dhuvaafaru';
     const number = participantData.number || participantData.phone || participantData.mobile || participantData.contact || '';
+    const location = participantData.location || '';
 
     // Normalize location for filtering (used by tabs)
-    let normalizedLocation = '';
-    if (atoll) {
+    let normalizedLocation = location;
+    if (!normalizedLocation && atoll) {
         const locLower = atoll.toLowerCase();
         if (locLower.includes('dhuvaafaru') || locLower.includes('dhuvafaru')) {
             normalizedLocation = 'Dhuvaafaru';
-        } else if (locLower.includes("male") || locLower.includes("malé")) {
+        } else if (locLower.includes("male") || locLower.includes("mal�")) {
             normalizedLocation = "Male'";
         } else {
             normalizedLocation = atoll;
@@ -1760,7 +1791,10 @@ async function saveParticipant() {
         // Ensure aliases are set
         phone: number,
         island: atoll,
+        atoll: atoll, // Ensure atoll is set with default
         location: normalizedLocation,
+        // Map otherBoat field to speedBoat (field name changed but data structure uses speedBoat)
+        speedBoat: participantData.otherBoat || participantData.speedBoat || 'XSpeed',
         // Preserve timestamps
         createdAt: AppState.currentParticipant ?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -1844,7 +1878,7 @@ async function deleteCurrentParticipant() {
                 if (db) {
                     try {
                         await db.collection(PARTICIPANTS_COLLECTION).doc(participantId).delete();
-                        console.log(`✅ Deleted participant ${participantId} from Firestore`);
+                        console.log(`? Deleted participant ${participantId} from Firestore`);
                     } catch (error) {
                         console.error('Error deleting from Firestore:', error);
                         // Continue anyway - we've already removed from local state
