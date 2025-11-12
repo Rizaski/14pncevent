@@ -758,7 +758,12 @@ function renderParticipants() {
                 <tr>
                     <th>
                         <div class="th-content">
-                            <span># Name</span>
+                            <span>#</span>
+                        </div>
+                    </th>
+                    <th>
+                        <div class="th-content">
+                            <span>Name</span>
                             <button class="sort-btn" data-sort="name">
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <polyline points="6 9 12 15 18 9"></polyline>
@@ -838,9 +843,11 @@ function renderParticipants() {
             <tbody>
                 ${pageParticipants.map((participant, pageIndex) => {
                     const globalIndex = startIndex + pageIndex;
+                    const serialNumber = globalIndex + 1;
                     return `
                         <tr class="participant-row" data-participant-id="${participant.id || globalIndex}" data-participant-index="${globalIndex}">
-                            <td class="participant-name-cell">${globalIndex + 1}. ${escapeHtml(participant.name || '-')}</td>
+                            <td class="participant-serial-cell">${serialNumber}</td>
+                            <td class="participant-name-cell">${escapeHtml(participant.name || '-')}</td>
                             <td>${escapeHtml(participant.address || '-')}</td>
                             <td>${escapeHtml(maskIdNumber(participant.idNumber || participant.id || '-'))}</td>
                             <td>${escapeHtml(maskPhoneNumber(participant.number || participant.phone || '-'))}</td>

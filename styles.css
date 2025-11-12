@@ -411,30 +411,38 @@ body {
 /* Set minimum widths for columns to ensure readability */
 .participants-table th:nth-child(1),
 .participants-table td:nth-child(1) {
-    min-width: 180px;
+    min-width: 50px;
+    text-align: center;
+    /* Serial Number column */
 }
 
 .participants-table th:nth-child(2),
 .participants-table td:nth-child(2) {
     min-width: 180px;
-    /* Address column */
+    /* Name column */
 }
 
 .participants-table th:nth-child(3),
 .participants-table td:nth-child(3) {
-    min-width: 130px;
-    /* ID Number column */
+    min-width: 180px;
+    /* Address column */
 }
 
 .participants-table th:nth-child(4),
 .participants-table td:nth-child(4) {
     min-width: 130px;
+    /* ID Number column */
+}
+
+.participants-table th:nth-child(5),
+.participants-table td:nth-child(5) {
+    min-width: 130px;
     /* Number column */
 }
 
-/* Hide columns 5-8 from view (they're still in DOM for detail view) */
-.participants-table th:nth-child(n+5),
-.participants-table td:nth-child(n+5) {
+/* Hide columns 6-9 from view (they're still in DOM for detail view) */
+.participants-table th:nth-child(n+6),
+.participants-table td:nth-child(n+6) {
     display: none;
 }
 
@@ -635,6 +643,12 @@ body {
 
 .participants-table td:last-child {
     padding-right: 1.5rem;
+}
+
+.participant-serial-cell {
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-align: center;
 }
 
 .participant-name-cell {
