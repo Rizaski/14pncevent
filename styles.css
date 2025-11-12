@@ -411,8 +411,10 @@ body {
 /* Set minimum widths for columns to ensure readability */
 .participants-table th:nth-child(1),
 .participants-table td:nth-child(1) {
-    min-width: 50px;
+    min-width: 20px;
+    width: 20px;
     text-align: center;
+    padding: 0.75rem 0.25rem;
     /* Serial Number column */
 }
 
@@ -1770,6 +1772,13 @@ body {
         min-width: 120px;
     }
 
+    .participants-table th:nth-child(1),
+    .participants-table td:nth-child(1) {
+        min-width: 20px;
+        width: 20px;
+        padding: 0.75rem 0.25rem;
+    }
+
     .participants-table th:nth-child(2),
     .participants-table td:nth-child(2) {
         min-width: 100px;
@@ -2095,6 +2104,13 @@ body {
     .participants-table td:first-child {
         padding-left: 0.5rem;
         min-width: 100px;
+    }
+
+    .participants-table th:nth-child(1),
+    .participants-table td:nth-child(1) {
+        min-width: 20px;
+        width: 20px;
+        padding: 0.75rem 0.25rem;
     }
 
     .participants-table th:nth-child(2),
