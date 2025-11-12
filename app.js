@@ -1770,7 +1770,7 @@ async function saveParticipant() {
     if (!name) {
         showToast('Name is required', 'error');
         const nameInput = document.getElementById('detail-name');
-        nameInput ?.focus();
+        nameInput?.focus();
         return;
     }
 
@@ -1803,7 +1803,7 @@ async function saveParticipant() {
         // Map otherBoat field to speedBoat (field name changed but data structure uses speedBoat)
         speedBoat: participantData.otherBoat || participantData.speedBoat || 'XSpeed',
         // Preserve timestamps
-        createdAt: AppState.currentParticipant ?.createdAt || new Date().toISOString(),
+        createdAt: AppState.currentParticipant?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString()
     };
 
