@@ -1,0 +1,13 @@
+{
+    "name": "dhuvaafaru-team-data-loader",
+    "version": "1.0.0",
+    "description": "Script to load Excel data into Firebase",
+    "main": "load-data-to-firebase.js",
+    "scripts": {
+        "load-data": "node load-data-to-firebase.js"
+    },
+    "dependencies": {
+        "xlsx": "^0.18.5",
+        "firebase-admin": "^12.0.0"
+    }
+}

@@ -4,17 +4,77 @@ const AppState = {
     currentTab: 'master',
     isAdmin: false,
     searchQuery: '',
-    filteredParticipants: []
+    filteredParticipants: [],
+    currentPage: 1,
+    recordsPerPage: 10,
+    currentParticipantIndex: -1, // Track current participant in detail view
+    isEditMode: false, // Track if we're in edit mode
+    isAddMode: false, // Track if we're adding a new participant
+    currentParticipant: null // Store current participant being viewed/edited
 };
 
+// Firebase references (will be initialized after Firebase loads)
+let db = null;
+let auth = null;
+const PARTICIPANTS_COLLECTION = 'participants';
+const ADMIN_EMAIL = 'rixaski@gmail.com'; // Admin email for Firebase Auth
+
 // Initialize App
-document.addEventListener('DOMContentLoaded', () => {
-    loadParticipantsFromStorage();
+document.addEventListener('DOMContentLoaded', async () => {
+    // Show loading state
+    showLoading();
+
+    // Wait for Firebase to initialize
+    await waitForFirebase();
+
+    // Try to load from Firestore, but don't block if it fails
+    try {
+        await loadParticipantsFromFirestore();
+    } catch (error) {
+        console.error('Error loading from Firestore:', error);
+        // If Firestore fails, use localStorage
+        loadParticipantsFromLocalStorage();
+    }
+
     initializeEventListeners();
-    renderParticipants();
+    // Filter and render participants (this populates filteredParticipants)
+    // Loading will be replaced by renderParticipants() content
+    filterAndRenderParticipants();
     checkAdminStatus();
     initializeMap();
 });
+
+// Wait for Firebase to be available
+function waitForFirebase() {
+    return new Promise((resolve) => {
+        // If Firebase is already available
+        if (window.firebaseDb && window.firebaseAuth) {
+            db = window.firebaseDb;
+            auth = window.firebaseAuth;
+            resolve();
+            return;
+        }
+
+        // Otherwise wait for it
+        let attempts = 0;
+        const maxAttempts = 50; // 5 seconds max (50 * 100ms)
+
+        const checkFirebase = setInterval(() => {
+            attempts++;
+            if (window.firebaseDb && window.firebaseAuth) {
+                db = window.firebaseDb;
+                auth = window.firebaseAuth;
+                clearInterval(checkFirebase);
+                console.log('Firebase connected successfully');
+                resolve();
+            } else if (attempts >= maxAttempts) {
+                clearInterval(checkFirebase);
+                console.warn('Firebase initialization timeout. Using localStorage fallback.');
+                resolve();
+            }
+        }, 100);
+    });
+}
 
 // Initialize Map with popup workaround
 function initializeMap() {
@@ -53,6 +113,66 @@ function initializeMap() {
             }
         }, 500);
     }
+
+    // Initialize TV Player
+    initializeTvPlayer();
+}
+
+// Initialize TV Player
+function initializeTvPlayer() {
+    const openTvBtn = document.getElementById('openTvBtn');
+    const tvPreview = document.getElementById('tvPlayerPreview');
+
+    if (!openTvBtn || !tvPreview) return;
+
+    // TV URL
+    const tvUrl = 'https://mmtv.mv/tv/live';
+
+    // Open TV in popup window
+    openTvBtn.addEventListener('click', () => {
+        openTvInPopup(tvUrl);
+    });
+
+    // Also make the preview area clickable
+    tvPreview.addEventListener('click', (e) => {
+        // Don't trigger if clicking the button (button handles its own click)
+        if (!e.target.closest('.tv-open-btn')) {
+            openTvInPopup(tvUrl);
+        }
+    });
+}
+
+// Open TV in popup window with optimal dimensions
+function openTvInPopup(url) {
+    // Calculate optimal popup size (80% of screen, centered)
+    const width = Math.min(1200, window.screen.width * 0.9);
+    const height = Math.min(800, window.screen.height * 0.9);
+    const left = (window.screen.width - width) / 2;
+    const top = (window.screen.height - height) / 2;
+
+    const popup = window.open(
+        url,
+        'MMTVLive',
+        `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes,toolbar=no,location=no,menubar=no`
+    );
+
+    // Focus the popup
+    if (popup) {
+        popup.focus();
+
+        // Show a toast notification
+        showToast('MMTV Live opened in new window', 'info');
+    } else {
+        // Popup blocked - show alternative
+        showToast('Popup blocked. Please allow popups or click the link below.', 'error');
+
+        // Fallback: open in same tab
+        setTimeout(() => {
+            if (confirm('Popup was blocked. Would you like to open MMTV Live in this tab instead?')) {
+                window.open(url, '_blank');
+            }
+        }, 1000);
+    }
 }
 
 // Open map in popup window with optimal dimensions
@@ -88,62 +208,162 @@ function openMapInPopup(url) {
     }
 }
 
-// Load participants from local storage
-function loadParticipantsFromStorage() {
+// Load participants from Firestore
+async function loadParticipantsFromFirestore() {
+    if (!db) {
+        console.warn('Firebase Firestore not available, using localStorage fallback');
+        // Fallback to localStorage if Firebase is not available
+        loadParticipantsFromLocalStorage();
+        return;
+    }
+
+    try {
+        console.log('Loading participants from Firestore...');
+        const snapshot = await db.collection(PARTICIPANTS_COLLECTION).get();
+
+        if (snapshot.empty) {
+            console.log('Firestore collection is empty');
+            // Firestore is empty - respect this and don't load from cache
+            // Clear localStorage to prevent stale cache from being used
+            localStorage.removeItem('dhuvaafaru_participants');
+            AppState.participants = [];
+            console.log('✅ Firestore is empty - cleared cache and set participants to empty array');
+        } else {
+            AppState.participants = snapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    id: String(doc.id), // Ensure id is always a string
+                    ...data
+                };
+            });
+            // Sync to localStorage as backup (only when we have data from Firestore)
+            if (AppState.participants.length > 0) {
+                localStorage.setItem('dhuvaafaru_participants', JSON.stringify(AppState.participants));
+            } else {
+                // If Firestore has no participants, clear cache
+                localStorage.removeItem('dhuvaafaru_participants');
+            }
+            console.log(`✅ Loaded ${AppState.participants.length} participants from Firestore`);
+        }
+    } catch (error) {
+        // Check if it's a permissions error
+        if (error.code === 'permission-denied' || error.message.includes('permissions') || error.message.includes('Missing or insufficient permissions')) {
+            console.warn('Firestore permission denied, using localStorage fallback');
+            // Fallback to localStorage on first load
+            loadParticipantsFromLocalStorage();
+            return; // Exit early
+        }
+
+        // Only log non-permission errors
+        console.error('Error loading participants from Firestore:', error);
+        // Fallback to localStorage
+        loadParticipantsFromLocalStorage();
+    }
+}
+
+// Save participants to Firestore
+async function saveParticipantsToFirestore() {
+    if (!db) {
+        // Fallback to localStorage if Firebase is not available
+        saveParticipantsToLocalStorage();
+        return;
+    }
+
+    try {
+        // Get current Firestore data
+        const snapshot = await db.collection(PARTICIPANTS_COLLECTION).get();
+        const existingIds = new Set(snapshot.docs.map(d => d.id));
+
+        // Update or create each participant
+        const promises = AppState.participants.map(async (participant) => {
+            // Ensure participant ID is a string (Firestore requires string IDs)
+            let participantId = participant.id;
+            if (!participantId) {
+                participantId = `participant_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+            } else {
+                // Convert to string if it's a number
+                participantId = String(participantId);
+            }
+            const participantRef = db.collection(PARTICIPANTS_COLLECTION).doc(participantId);
+            await participantRef.set({
+                name: participant.name || '',
+                location: participant.location || '',
+                phone: participant.phone || '',
+                email: participant.email || '',
+                idNumber: participant.idNumber || '',
+                number: participant.number || participant.phone || '',
+                address: participant.address || '',
+                atoll: participant.atoll || participant.island || participant.location || '',
+                island: participant.island || participant.location || '',
+                positions: participant.positions || '',
+                dhaaira: participant.dhaaira || '',
+                createdAt: participant.createdAt || new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            }, {
+                merge: true
+            });
+            return participantId;
+        });
+
+        await Promise.all(promises);
+
+        // Delete participants that are no longer in the array (only if explicitly clearing)
+        // For normal saves, we keep all existing documents and just update/add new ones
+        // Uncomment below if you want to delete removed participants:
+        // const currentIds = new Set(AppState.participants.map(p => p.id).filter(Boolean));
+        // const toDelete = Array.from(existingIds).filter(id => !currentIds.has(id));
+        // await Promise.all(toDelete.map(id => db.collection(PARTICIPANTS_COLLECTION).doc(id).delete()));
+
+        // Also save to localStorage as backup (only if we have participants)
+        if (AppState.participants.length > 0) {
+            saveParticipantsToLocalStorage();
+        } else {
+            // If no participants, clear cache
+            localStorage.removeItem('dhuvaafaru_participants');
+        }
+
+        console.log(`✅ Successfully saved ${AppState.participants.length} participants to Firestore`);
+    } catch (error) {
+        // Check if it's a permissions error
+        if (error.code === 'permission-denied' || error.message.includes('permissions') || error.message.includes('Missing or insufficient permissions')) {
+            // Silently fallback to localStorage - don't spam console with errors
+            saveParticipantsToLocalStorage();
+            return; // Exit early, don't show error toast on every save
+        }
+
+        // Only log non-permission errors
+        console.error('Error saving participants to Firestore:', error);
+        showToast('Error saving to cloud. Data saved locally.', 'info');
+
+        // Fallback to localStorage
+        saveParticipantsToLocalStorage();
+    }
+}
+
+// Fallback: Load participants from local storage
+function loadParticipantsFromLocalStorage() {
     const stored = localStorage.getItem('dhuvaafaru_participants');
     if (stored) {
         try {
             AppState.participants = JSON.parse(stored);
+            console.log(`✅ Loaded ${AppState.participants.length} participants from localStorage`);
         } catch (e) {
             console.error('Error loading participants:', e);
             AppState.participants = [];
         }
     } else {
-        // Add some dummy data for demonstration
-        AppState.participants = [{
-                id: 1,
-                name: 'Ahmed Ali',
-                location: 'Dhuvaafaru',
-                phone: '+960 123-4567',
-                email: 'ahmed@example.com'
-            },
-            {
-                id: 2,
-                name: 'Aisha Mohamed',
-                location: "Male'",
-                phone: '+960 234-5678',
-                email: 'aisha@example.com'
-            },
-            {
-                id: 3,
-                name: 'Ibrahim Hassan',
-                location: 'Dhuvaafaru',
-                phone: '+960 345-6789',
-                email: 'ibrahim@example.com'
-            },
-            {
-                id: 4,
-                name: 'Fatima Ahmed',
-                location: "Male'",
-                phone: '+960 456-7890',
-                email: 'fatima@example.com'
-            },
-            {
-                id: 5,
-                name: 'Mohamed Shafeeq',
-                location: 'Dhuvaafaru',
-                phone: '+960 567-8901',
-                email: 'shafeeq@example.com'
-            }
-        ];
-        saveParticipantsToStorage();
+        // No data - start with empty array
+        console.log('No data found in localStorage');
+        AppState.participants = [];
     }
 }
 
-// Save participants to local storage
-function saveParticipantsToStorage() {
+// Fallback: Save participants to local storage
+function saveParticipantsToLocalStorage() {
     localStorage.setItem('dhuvaafaru_participants', JSON.stringify(AppState.participants));
 }
+
+// Note: Dummy data initialization removed - app now only loads from Firestore
 
 // Initialize event listeners
 function initializeEventListeners() {
@@ -163,9 +383,15 @@ function initializeEventListeners() {
     });
 
     // Admin login button
-    document.getElementById('adminLoginBtn').addEventListener('click', () => {
-        showLoginModal();
-    });
+    const adminLoginBtn = document.getElementById('adminLoginBtn');
+    if (adminLoginBtn) {
+        adminLoginBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Admin login button clicked');
+            showLoginModal();
+        });
+    }
 
     // Admin logout button
     document.getElementById('adminLogoutBtn').addEventListener('click', () => {
@@ -173,10 +399,50 @@ function initializeEventListeners() {
     });
 
     // Login form
-    document.getElementById('loginForm').addEventListener('submit', (e) => {
-        e.preventDefault();
-        handleLogin();
-    });
+    const loginForm = document.getElementById('loginForm');
+    const loginSubmitBtn = document.getElementById('loginSubmitBtn');
+
+    if (loginForm) {
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Login form submitted');
+            handleLogin();
+            return false;
+        });
+    }
+
+    // Also add click handler to submit button as backup
+    if (loginSubmitBtn) {
+        loginSubmitBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Login button clicked');
+            handleLogin();
+        });
+    }
+
+    // Allow Enter key to submit
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
+
+    if (emailInput) {
+        emailInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                passwordInput.focus();
+            }
+        });
+    }
+
+    if (passwordInput) {
+        passwordInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleLogin();
+            }
+        });
+    }
 
     // Close login modal
     document.getElementById('closeLoginModal').addEventListener('click', () => {
@@ -269,6 +535,52 @@ function initializeEventListeners() {
             hideParticipantDetails();
         }
     });
+
+    // Navigation buttons in detail view
+    document.getElementById('prevParticipantBtn').addEventListener('click', () => {
+        navigateParticipant(-1);
+    });
+    document.getElementById('nextParticipantBtn').addEventListener('click', () => {
+        navigateParticipant(1);
+    });
+
+    // Keyboard navigation (arrow keys) in detail view
+    document.addEventListener('keydown', (e) => {
+        const modal = document.getElementById('participantDetailsModal');
+        if (modal && modal.classList.contains('active')) {
+            if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                navigateParticipant(-1);
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                navigateParticipant(1);
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                if (AppState.isEditMode || AppState.isAddMode) {
+                    cancelEdit();
+                } else {
+                    hideParticipantDetails();
+                }
+            }
+        }
+    });
+
+    // Admin action buttons (header icons)
+    document.getElementById('addParticipantBtnHeader').addEventListener('click', () => {
+        addNewParticipant();
+    });
+    document.getElementById('editParticipantBtnHeader').addEventListener('click', () => {
+        enableEditMode();
+    });
+    document.getElementById('deleteParticipantBtnHeader').addEventListener('click', () => {
+        deleteCurrentParticipant();
+    });
+    document.getElementById('saveParticipantBtnHeader').addEventListener('click', () => {
+        saveParticipant();
+    });
+    document.getElementById('cancelEditBtnHeader').addEventListener('click', () => {
+        cancelEdit();
+    });
 }
 
 // Switch tabs
@@ -283,15 +595,58 @@ function switchTab(tab) {
         }
     });
 
-    // Update section title
-    const titles = {
-        master: 'All Participants',
-        dhuvaafaru: 'Dhuvaafaru',
-        male: "Male'"
-    };
-    document.getElementById('sectionTitle').textContent = titles[tab];
+    // Show/hide sections based on tab
+    const participantsSection = document.querySelector('.participants-section');
+    const mapSection = document.querySelector('.map-section');
+    const adminPanel = document.getElementById('adminPanel');
 
-    filterAndRenderParticipants();
+    if (tab === 'admin') {
+        // Show admin panel, hide participants and map
+        if (participantsSection) participantsSection.style.display = 'none';
+        if (mapSection) mapSection.style.display = 'none';
+        if (adminPanel) adminPanel.style.display = 'block';
+    } else {
+        // Show participants and map, hide admin panel
+        if (participantsSection) participantsSection.style.display = 'block';
+        if (mapSection) mapSection.style.display = 'block';
+        if (adminPanel) adminPanel.style.display = 'none';
+
+        // Update section title
+        const titles = {
+            master: 'All Participants',
+            dhuvaafaru: 'Dhuvaafaru',
+            male: "Male'"
+        };
+        const sectionTitle = document.getElementById('sectionTitle');
+        if (sectionTitle) {
+            sectionTitle.textContent = titles[tab] || 'All Participants';
+        }
+
+        filterAndRenderParticipants();
+    }
+}
+
+// Mask ID Number - hide last 3 digits
+function maskIdNumber(idNumber) {
+    if (!idNumber || idNumber === '-') return '-';
+    const str = idNumber.toString().trim();
+    if (str.length <= 3) return '***';
+    return str.slice(0, -3) + '***';
+}
+
+// Mask Phone Number - hide last 3 digits
+function maskPhoneNumber(phone) {
+    if (!phone || phone === '-') return '-';
+    const str = phone.toString().trim();
+    if (str.length <= 3) return '***';
+    // Try to preserve format (e.g., "+960 123-****")
+    if (str.includes('-')) {
+        const parts = str.split('-');
+        if (parts.length === 2 && parts[1].length >= 3) {
+            return parts[0] + '-' + parts[1].slice(0, -3) + '***';
+        }
+    }
+    return str.slice(0, -3) + '***';
 }
 
 // Filter and render participants
@@ -324,18 +679,20 @@ function filterAndRenderParticipants() {
     }
 
     AppState.filteredParticipants = filtered;
+    AppState.currentPage = 1; // Reset to first page when filtering
     renderParticipants();
 }
 
-// Render participants list
+// Render participants list with pagination
 function renderParticipants() {
     const listContainer = document.getElementById('participantsList');
     const countElement = document.getElementById('participantCount');
 
-    countElement.textContent = AppState.filteredParticipants.length;
+    const totalRecords = AppState.filteredParticipants.length;
+    countElement.textContent = totalRecords;
 
-    if (AppState.filteredParticipants.length === 0) {
-        listContainer.innerHTML = `
+    if (totalRecords === 0) {
+        let emptyStateHTML = `
             <div class="empty-state">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
@@ -344,10 +701,41 @@ function renderParticipants() {
                     <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
                 </svg>
                 <p>No participants found</p>
-            </div>
         `;
+
+        // Add "Add Participant" button for admin (only on master tab)
+        if (AppState.isAdmin && AppState.currentTab === 'master') {
+            emptyStateHTML += `
+                <button class="btn btn-primary" id="addFirstParticipantBtn" style="margin-top: 1rem;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                    Add First Participant
+                </button>
+            `;
+        }
+
+        emptyStateHTML += `</div>`;
+        listContainer.innerHTML = emptyStateHTML;
+
+        // Add event listener for "Add First Participant" button
+        const addFirstBtn = document.getElementById('addFirstParticipantBtn');
+        if (addFirstBtn) {
+            addFirstBtn.addEventListener('click', () => {
+                addNewParticipant();
+            });
+        }
+
         return;
     }
+
+    // Calculate pagination
+    const totalPages = Math.ceil(totalRecords / AppState.recordsPerPage);
+    const currentPage = Math.min(AppState.currentPage, totalPages) || 1;
+    const startIndex = (currentPage - 1) * AppState.recordsPerPage;
+    const endIndex = Math.min(startIndex + AppState.recordsPerPage, totalRecords);
+    const pageParticipants = AppState.filteredParticipants.slice(startIndex, endIndex);
 
     listContainer.innerHTML = `
         <div class="participants-list-wrapper">
@@ -362,6 +750,16 @@ function renderParticipants() {
                                     <polyline points="6 9 12 15 18 9"></polyline>
                                 </svg>
                             </button>
+                        </div>
+                    </th>
+                    <th>
+                        <div class="th-content">
+                            <button class="sort-btn" data-sort="address">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="6 9 12 15 18 9"></polyline>
+                                </svg>
+                            </button>
+                            <span>Address</span>
                         </div>
                     </th>
                     <th>
@@ -382,16 +780,6 @@ function renderParticipants() {
                                 </svg>
                             </button>
                             <span>Number</span>
-                        </div>
-                    </th>
-                    <th>
-                        <div class="th-content">
-                            <button class="sort-btn" data-sort="address">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <polyline points="6 9 12 15 18 9"></polyline>
-                                </svg>
-                            </button>
-                            <span>Address</span>
                         </div>
                     </th>
                     <th class="hidden-column">
@@ -434,13 +822,14 @@ function renderParticipants() {
                 </tr>
             </thead>
             <tbody>
-                ${AppState.filteredParticipants.map((participant, index) => {
+                ${pageParticipants.map((participant, pageIndex) => {
+                    const globalIndex = startIndex + pageIndex;
                     return `
-                        <tr class="participant-row" data-participant-id="${participant.id || index}" data-participant-index="${index}">
-                            <td class="participant-name-cell">${index + 1}. ${escapeHtml(participant.name || '-')}</td>
-                            <td>${escapeHtml(participant.idNumber || participant.id || '-')}</td>
-                            <td>${escapeHtml(participant.number || participant.phone || '-')}</td>
+                        <tr class="participant-row" data-participant-id="${participant.id || globalIndex}" data-participant-index="${globalIndex}">
+                            <td class="participant-name-cell">${globalIndex + 1}. ${escapeHtml(participant.name || '-')}</td>
                             <td>${escapeHtml(participant.address || '-')}</td>
+                            <td>${escapeHtml(maskIdNumber(participant.idNumber || participant.id || '-'))}</td>
+                            <td>${escapeHtml(maskPhoneNumber(participant.number || participant.phone || '-'))}</td>
                             <td class="hidden-column">${escapeHtml(participant.atoll || participant.island || participant.location || '-')}</td>
                             <td class="hidden-column">${escapeHtml(participant.positions || '-')}</td>
                             <td class="hidden-column">${escapeHtml(participant.dhaaira || '-')}</td>
@@ -451,6 +840,7 @@ function renderParticipants() {
             </tbody>
         </table>
         </div>
+        ${renderPagination(totalPages, currentPage)}
     `;
 
     // Add sort functionality
@@ -464,17 +854,111 @@ function renderParticipants() {
         });
     });
 
-    // Add click handlers to table rows
+    // Add click handlers to table rows (only for admin)
     document.querySelectorAll('.participant-row').forEach(row => {
         row.addEventListener('click', (e) => {
             // Don't trigger if clicking sort button or other interactive elements
-            if (e.target.closest('.sort-btn') || e.target.closest('button')) {
+            if (e.target.closest('.sort-btn') || e.target.closest('button') || e.target.closest('.pagination')) {
+                return;
+            }
+            // Only show details if admin is logged in
+            if (!AppState.isAdmin) {
                 return;
             }
             const participantIndex = parseInt(row.dataset.participantIndex);
             const participant = AppState.filteredParticipants[participantIndex];
             if (participant) {
-                showParticipantDetails(participant);
+                showParticipantDetails(participant, participantIndex);
+            }
+        });
+    });
+
+    // Update row cursor style based on admin status
+    updateTableRowStyles();
+
+    // Add pagination event listeners
+    setupPaginationListeners();
+}
+
+// Render pagination controls
+function renderPagination(totalPages, currentPage) {
+    if (totalPages <= 1) return '';
+
+    let paginationHTML = '<div class="pagination">';
+
+    // Previous button
+    paginationHTML += `
+        <button class="pagination-btn" data-page="${currentPage - 1}" ${currentPage === 1 ? 'disabled' : ''}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+            Previous
+        </button>
+    `;
+
+    // Page numbers
+    const maxVisiblePages = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+
+    if (endPage - startPage < maxVisiblePages - 1) {
+        startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+
+    if (startPage > 1) {
+        paginationHTML += `<button class="pagination-btn" data-page="1">1</button>`;
+        if (startPage > 2) {
+            paginationHTML += `<span class="pagination-ellipsis">...</span>`;
+        }
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+        paginationHTML += `
+            <button class="pagination-btn ${i === currentPage ? 'active' : ''}" data-page="${i}">
+                ${i}
+            </button>
+        `;
+    }
+
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+            paginationHTML += `<span class="pagination-ellipsis">...</span>`;
+        }
+        paginationHTML += `<button class="pagination-btn" data-page="${totalPages}">${totalPages}</button>`;
+    }
+
+    // Next button
+    paginationHTML += `
+        <button class="pagination-btn" data-page="${currentPage + 1}" ${currentPage === totalPages ? 'disabled' : ''}>
+            Next
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+        </button>
+    `;
+
+    paginationHTML += '</div>';
+    return paginationHTML;
+}
+
+// Setup pagination event listeners
+function setupPaginationListeners() {
+    document.querySelectorAll('.pagination-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (btn.disabled) return;
+            const page = parseInt(btn.dataset.page);
+            if (page && page !== AppState.currentPage) {
+                AppState.currentPage = page;
+                renderParticipants();
+                // Scroll to top of table
+                const listContainer = document.getElementById('participantsList');
+                if (listContainer) {
+                    listContainer.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
             }
         });
     });
@@ -498,6 +982,7 @@ function sortParticipants(field) {
         return String(aVal).localeCompare(String(bVal));
     });
 
+    AppState.currentPage = 1; // Reset to first page after sorting
     renderParticipants();
 }
 
@@ -510,6 +995,16 @@ function escapeHtml(text) {
 
 // Admin Authentication
 function checkAdminStatus() {
+    if (auth) {
+        const user = auth.currentUser;
+        if (user && user.email && user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+            AppState.isAdmin = true;
+            updateAdminUI();
+            return;
+        }
+    }
+
+    // Fallback to localStorage check
     const isAdmin = localStorage.getItem('dhuvaafaru_admin') === 'true';
     AppState.isAdmin = isAdmin;
     updateAdminUI();
@@ -518,54 +1013,175 @@ function checkAdminStatus() {
 function updateAdminUI() {
     const loginBtn = document.getElementById('adminLoginBtn');
     const logoutBtn = document.getElementById('adminLogoutBtn');
-    const adminPanel = document.getElementById('adminPanel');
+    const adminTab = document.querySelector('.admin-tab');
 
     if (AppState.isAdmin) {
         loginBtn.style.display = 'none';
         logoutBtn.style.display = 'flex';
-        adminPanel.style.display = 'block';
+        // Show admin tab
+        if (adminTab) {
+            adminTab.style.display = 'flex';
+        }
     } else {
         loginBtn.style.display = 'flex';
         logoutBtn.style.display = 'none';
-        adminPanel.style.display = 'none';
+        // Hide admin tab
+        if (adminTab) {
+            adminTab.style.display = 'none';
+        }
+        // If currently on admin tab, switch to master tab
+        if (AppState.currentTab === 'admin') {
+            switchTab('master');
+        }
+        // Close detail view if open
+        hideParticipantDetails();
     }
+
+    // Update table row styles based on admin status
+    updateTableRowStyles();
+    // Update admin buttons in detail view
+    updateAdminButtonsVisibility();
+}
+
+// Update table row cursor and styling based on admin status
+function updateTableRowStyles() {
+    const rows = document.querySelectorAll('.participant-row');
+    rows.forEach(row => {
+        if (AppState.isAdmin) {
+            row.style.cursor = 'pointer';
+            row.classList.add('clickable-row');
+        } else {
+            row.style.cursor = 'default';
+            row.classList.remove('clickable-row');
+        }
+    });
 }
 
 function showLoginModal() {
-    document.getElementById('loginModal').classList.add('active');
-    document.getElementById('email').focus();
+    const loginModal = document.getElementById('loginModal');
+    const emailInput = document.getElementById('email');
+
+    if (loginModal) {
+        loginModal.classList.add('active');
+    }
+
+    // Focus email input after a short delay to ensure modal is visible
+    setTimeout(() => {
+        if (emailInput) {
+            emailInput.focus();
+            emailInput.select();
+        }
+    }, 100);
 }
 
 function hideLoginModal() {
-    document.getElementById('loginModal').classList.remove('active');
-    document.getElementById('loginForm').reset();
-}
-
-function handleLogin() {
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
-
-    // Admin credentials
-    if (email === 'admin@example.com' && password === 'Admin123') {
-        localStorage.setItem('dhuvaafaru_admin', 'true');
-        AppState.isAdmin = true;
-        updateAdminUI();
-        hideLoginModal();
-        showToast('Login successful!', 'success');
-    } else {
-        showToast('Invalid email or password', 'error');
+    const loginModal = document.getElementById('loginModal');
+    const loginForm = document.getElementById('loginForm');
+    if (loginModal) {
+        loginModal.classList.remove('active');
+    }
+    if (loginForm) {
+        loginForm.reset();
     }
 }
 
-function logout() {
+async function handleLogin() {
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
+
+    // Trim whitespace and get values
+    const email = emailInput.value.trim();
+    const password = passwordInput.value.trim();
+
+    console.log('Login attempt:', {
+        email
+    }); // Don't log password
+
+    if (!email || !password) {
+        showToast('Please enter both email and password', 'error');
+        return false;
+    }
+
+    // Try Firebase Authentication first
+    if (auth) {
+        try {
+            showToast('Signing in...', 'info');
+            const userCredential = await auth.signInWithEmailAndPassword(email, password);
+            const user = userCredential.user;
+
+            // Check if user is admin
+            if (user && user.email && user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+                AppState.isAdmin = true;
+                updateAdminUI();
+                hideLoginModal();
+                showToast('Login successful!', 'success');
+                // Also save to localStorage as backup
+                localStorage.setItem('dhuvaafaru_admin', 'true');
+                return true;
+            } else {
+                // User logged in but not admin
+                await auth.signOut();
+                showToast('Access denied. Admin email required.', 'error');
+                passwordInput.value = '';
+                passwordInput.focus();
+                return false;
+            }
+        } catch (error) {
+            console.error('Firebase Auth error:', error);
+            let errorMessage = 'Invalid email or password';
+
+            if (error.code === 'auth/user-not-found') {
+                errorMessage = 'User not found. Please check your email.';
+            } else if (error.code === 'auth/wrong-password') {
+                errorMessage = 'Incorrect password.';
+            } else if (error.code === 'auth/invalid-email') {
+                errorMessage = 'Invalid email format.';
+            } else if (error.code === 'auth/user-disabled') {
+                errorMessage = 'This account has been disabled.';
+            } else if (error.code === 'auth/too-many-requests') {
+                errorMessage = 'Too many failed attempts. Please try again later.';
+            }
+
+            showToast(errorMessage, 'error');
+            passwordInput.value = '';
+            passwordInput.focus();
+            return false;
+        }
+    } else {
+        // Fallback to simple authentication if Firebase Auth is not available
+        console.warn('Firebase Auth not available, using fallback authentication');
+        // Note: Fallback authentication disabled - Firebase Auth required
+        showToast('Firebase Authentication is required. Please ensure Firebase Auth is properly configured.', 'error');
+        passwordInput.value = '';
+        passwordInput.focus();
+        return false;
+    }
+}
+
+async function logout() {
     showConfirmDialog(
         'Logout',
         'Are you sure you want to logout?',
-        () => {
-            localStorage.removeItem('dhuvaafaru_admin');
-            AppState.isAdmin = false;
-            updateAdminUI();
-            showToast('Logged out successfully', 'info');
+        async () => {
+            try {
+                // Sign out from Firebase Auth
+                if (auth) {
+                    await auth.signOut();
+                }
+
+                // Clear localStorage
+                localStorage.removeItem('dhuvaafaru_admin');
+                AppState.isAdmin = false;
+                updateAdminUI();
+                showToast('Logged out successfully', 'info');
+            } catch (error) {
+                console.error('Logout error:', error);
+                // Still clear local state even if Firebase logout fails
+                localStorage.removeItem('dhuvaafaru_admin');
+                AppState.isAdmin = false;
+                updateAdminUI();
+                showToast('Logged out successfully', 'info');
+            }
         }
     );
 }
@@ -578,7 +1194,7 @@ function handleFileUpload(file) {
     }
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
         try {
             const data = new Uint8Array(e.target.result);
             const workbook = XLSX.read(data, {
@@ -592,7 +1208,7 @@ function handleFileUpload(file) {
                 return;
             }
 
-            parseExcelData(jsonData);
+            await parseExcelData(jsonData);
         } catch (error) {
             console.error('Error parsing Excel:', error);
             showToast('Error parsing Excel file. Please check the format.', 'error');
@@ -606,16 +1222,30 @@ function handleFileUpload(file) {
     reader.readAsArrayBuffer(file);
 }
 
-function parseExcelData(jsonData) {
+async function parseExcelData(jsonData) {
     const newParticipants = [];
-    let maxId = Math.max(...AppState.participants.map(p => p.id || 0), 0);
+    // Get max ID, converting to number for comparison, then back to string
+    let maxId = Math.max(...AppState.participants.map(p => {
+        const id = p.id;
+        if (!id) return 0;
+        const numId = parseInt(id, 10);
+        return isNaN(numId) ? 0 : numId;
+    }), 0);
 
     jsonData.forEach((row, index) => {
         // Try to find name in various possible column names
-        const name = row['Name'] || row['name'] || row['NAME'] ||
+        const name = row['# Name'] || row['# name'] || row['# NAME'] ||
+            row['Name'] || row['name'] || row['NAME'] ||
             row['Full Name'] || row['full name'] || row['FULL NAME'] ||
             row['Participant'] || row['participant'] || row['PARTICIPANT'] ||
             Object.values(row)[0] || `Participant ${index + 1}`;
+
+        // Clean up name if it starts with a number (e.g., "1. John Doe" -> "John Doe")
+        let cleanName = name.toString().trim();
+        const nameMatch = cleanName.match(/^\d+\.\s*(.+)$/);
+        if (nameMatch) {
+            cleanName = nameMatch[1].trim();
+        }
 
         // Try to find ID Number
         const idNumber = row['ID Number'] || row['id number'] || row['ID NUMBER'] ||
@@ -668,8 +1298,8 @@ function parseExcelData(jsonData) {
         }
 
         newParticipants.push({
-            id: ++maxId,
-            name: name.toString().trim(),
+            id: String(++maxId),
+            name: cleanName,
             idNumber: idNumber ? idNumber.toString().trim() : '',
             number: number ? number.toString().trim() : '',
             phone: number ? number.toString().trim() : '', // Keep for backward compatibility
@@ -685,7 +1315,7 @@ function parseExcelData(jsonData) {
 
     if (newParticipants.length > 0) {
         AppState.participants = [...AppState.participants, ...newParticipants];
-        saveParticipantsToStorage();
+        await saveParticipantsToFirestore();
         filterAndRenderParticipants();
         showToast(`Successfully imported ${newParticipants.length} participant(s)`, 'success');
     } else {
@@ -694,9 +1324,9 @@ function parseExcelData(jsonData) {
 }
 
 // Clear all data
-function clearAllData() {
+async function clearAllData() {
     AppState.participants = [];
-    saveParticipantsToStorage();
+    await saveParticipantsToFirestore();
     filterAndRenderParticipants();
     showToast('All data cleared', 'info');
 }
@@ -728,6 +1358,26 @@ function exportToExcel() {
 }
 
 // Toast Notification
+// Show loading spinner
+function showLoading() {
+    const listContainer = document.getElementById('participantsList');
+    if (listContainer) {
+        // Clear any existing content and show loading spinner
+        listContainer.innerHTML = `
+            <div class="loading-spinner">
+                <div class="spinner"></div>
+                <p>Loading participants...</p>
+            </div>
+        `;
+    }
+}
+
+// Hide loading spinner
+function hideLoading() {
+    // Loading will be replaced by renderParticipants() content
+    // This function is kept for consistency but renderParticipants handles the display
+}
+
 function showToast(message, type = 'info') {
     const toast = document.getElementById('toast');
     toast.textContent = message;
@@ -740,100 +1390,480 @@ function showToast(message, type = 'info') {
 }
 
 // Show Participant Details
-function showParticipantDetails(participant) {
+function showParticipantDetails(participant, index = -1) {
+    // Only allow detail view for admin
+    if (!AppState.isAdmin) {
+        return;
+    }
+
     const modal = document.getElementById('participantDetailsModal');
     const nameElement = document.getElementById('detailParticipantName');
     const contentElement = document.getElementById('participantDetailsContent');
 
+    // Store the current participant and index
+    AppState.currentParticipant = participant;
+    if (index >= 0) {
+        AppState.currentParticipantIndex = index;
+    } else {
+        // Find index if not provided
+        AppState.currentParticipantIndex = AppState.filteredParticipants.findIndex(p =>
+            (p.id && participant.id && p.id === participant.id) ||
+            (p.name === participant.name && p.idNumber === participant.idNumber)
+        );
+    }
+
+    // Reset edit/add modes
+    AppState.isEditMode = false;
+    AppState.isAddMode = false;
+
     nameElement.textContent = participant.name || 'Participant Details';
-
-    const locationClass = participant.location === 'Dhuvaafaru' ? 'dhuvaafaru' : 'male';
-
-    contentElement.innerHTML = `
-        <div class="detail-item">
-            <div class="detail-label">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                    <circle cx="12" cy="7" r="4"></circle>
-                </svg>
-                Name
-            </div>
-            <div class="detail-value">${escapeHtml(participant.name || '-')}</div>
-        </div>
-        <div class="detail-item">
-            <div class="detail-label">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                    <line x1="16" y1="2" x2="16" y2="6"></line>
-                    <line x1="8" y1="2" x2="8" y2="6"></line>
-                    <line x1="3" y1="10" x2="21" y2="10"></line>
-                </svg>
-                ID Number
-            </div>
-            <div class="detail-value">${escapeHtml(participant.idNumber || participant.id || '-')}</div>
-        </div>
-        <div class="detail-item">
-            <div class="detail-label">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
-                </svg>
-                Number
-            </div>
-            <div class="detail-value">${escapeHtml(participant.number || participant.phone || '-')}</div>
-        </div>
-        <div class="detail-item">
-            <div class="detail-label">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                    <circle cx="12" cy="10" r="3"></circle>
-                </svg>
-                Address
-            </div>
-            <div class="detail-value">${escapeHtml(participant.address || '-')}</div>
-        </div>
-        <div class="detail-item">
-            <div class="detail-label">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                    <circle cx="12" cy="10" r="3"></circle>
-                </svg>
-                Atoll / Island
-            </div>
-            <div class="detail-value">
-                <span class="location-badge ${locationClass}">${escapeHtml(participant.atoll || participant.island || participant.location || '-')}</span>
-            </div>
-        </div>
-        <div class="detail-item">
-            <div class="detail-label">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                    <circle cx="9" cy="7" r="4"></circle>
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                </svg>
-                Positions
-            </div>
-            <div class="detail-value">${escapeHtml(participant.positions || '-')}</div>
-        </div>
-        <div class="detail-item">
-            <div class="detail-label">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="12" y1="8" x2="12" y2="12"></line>
-                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                </svg>
-                Dhaaira
-            </div>
-            <div class="detail-value">${escapeHtml(participant.dhaaira || '-')}</div>
-        </div>
-    `;
+    updateDetailNavigation();
+    updateAdminButtonsVisibility();
+    renderParticipantDetails(participant);
 
     modal.classList.add('active');
+}
+
+// Render participant details (read-only or editable) - Show only specified fields
+function renderParticipantDetails(participant) {
+    const contentElement = document.getElementById('participantDetailsContent');
+    if (!contentElement) return;
+
+    const locationClass = participant.location === 'Dhuvaafaru' ? 'dhuvaafaru' : 'male';
+    const isEditable = AppState.isEditMode || AppState.isAddMode;
+
+    // Define the exact fields to show in order
+    const fieldsToShow = [{
+            key: 'id',
+            label: '#',
+            value: participant.id || ''
+        },
+        {
+            key: 'name',
+            label: 'Name',
+            value: participant.name || ''
+        },
+        {
+            key: 'address',
+            label: 'Address',
+            value: participant.address || ''
+        },
+        {
+            key: 'idNumber',
+            label: 'ID Number',
+            value: participant.idNumber || participant.id || ''
+        },
+        {
+            key: 'number',
+            label: 'Number',
+            value: participant.number || participant.phone || participant.mobile || participant.contact || ''
+        },
+        {
+            key: 'atoll',
+            label: 'Atoll / Island',
+            value: participant.atoll || participant.island || participant.location || ''
+        },
+        {
+            key: 'dhaaira',
+            label: 'Dhuvaafaru Dhaairaa',
+            value: participant.dhaaira || participant['Dhuvaafaru Dhaairaa'] || participant['dhaairaa'] || ''
+        },
+        {
+            key: 'location',
+            label: 'Location',
+            value: participant.location || ''
+        },
+        {
+            key: 'speedBoat',
+            label: 'Speed Boat',
+            value: participant.speedBoat || participant['Speed Boat'] || participant['speed boat'] || participant['SpeedBoat'] || ''
+        }
+    ];
+
+    // Helper function to get field value (handling aliases)
+    const getFieldValue = (field) => {
+        return field.value || '';
+    };
+
+    // Helper function to render field value (input if editable, text if not)
+    const renderField = (value, fieldKey, fieldLabel) => {
+        if (isEditable) {
+            if (fieldKey === 'atoll') {
+                // Dropdown for Atoll / Island
+                return `
+                    <select class="detail-input" name="atoll" id="detail-atoll">
+                        <option value="">Select Location</option>
+                        <option value="Dhuvaafaru" ${value === 'Dhuvaafaru' ? 'selected' : ''}>Dhuvaafaru</option>
+                        <option value="Male'" ${value === "Male'" ? 'selected' : ''}>Male'</option>
+                    </select>
+                `;
+            } else if (fieldKey === 'number') {
+                return `<input type="tel" class="detail-input" name="number" id="detail-number" value="${escapeHtml(value || '')}" placeholder="Enter phone number">`;
+            } else if (fieldKey === 'id') {
+                return `<input type="text" class="detail-input" name="id" id="detail-id" value="${escapeHtml(value || '')}" placeholder="Enter ID" readonly style="background: var(--bg-tertiary); cursor: not-allowed;">`;
+            } else {
+                return `<input type="text" class="detail-input" name="${fieldKey}" id="detail-${fieldKey}" value="${escapeHtml(value || '')}" placeholder="Enter ${fieldLabel}">`;
+            }
+        } else {
+            if (fieldKey === 'atoll') {
+                return `<span class="location-badge ${locationClass}">${escapeHtml(value || '-')}</span>`;
+            }
+            return escapeHtml(value || '-');
+        }
+    };
+
+    // Helper function to get icon SVG for field
+    const getFieldIcon = (fieldKey) => {
+        const icons = {
+            id: '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="10" x2="21" y2="10"></line>',
+            name: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle>',
+            address: '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle>',
+            idNumber: '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line>',
+            number: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>',
+            atoll: '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle>',
+            dhaaira: '<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>',
+            location: '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle>',
+            speedBoat: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line>'
+        };
+        return icons[fieldKey] || '<circle cx="12" cy="12" r="3"></circle>';
+    };
+
+    // Generate HTML for specified fields only
+    const fieldsHTML = fieldsToShow.map(field => {
+        const fieldValue = getFieldValue(field);
+        const iconSvg = getFieldIcon(field.key);
+
+        return `
+            <div class="detail-item">
+                <div class="detail-label">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        ${iconSvg}
+                    </svg>
+                    ${field.label}
+                </div>
+                <div class="detail-value">${renderField(fieldValue, field.key, field.label)}</div>
+            </div>
+        `;
+    }).join('');
+
+    contentElement.innerHTML = fieldsHTML || '<div class="detail-item"><div class="detail-label">No data</div><div class="detail-value">-</div></div>';
 }
 
 function hideParticipantDetails() {
     const modal = document.getElementById('participantDetailsModal');
     modal.classList.remove('active');
+    AppState.currentParticipantIndex = -1;
+    AppState.currentParticipant = null;
+    AppState.isEditMode = false;
+    AppState.isAddMode = false;
+}
+
+// Navigate to previous/next participant in detail view
+function navigateParticipant(direction) {
+    // Don't allow navigation during edit/add mode
+    if (AppState.isEditMode || AppState.isAddMode) {
+        return;
+    }
+
+    const total = AppState.filteredParticipants.length;
+    if (total === 0) return;
+
+    let newIndex = AppState.currentParticipantIndex + direction;
+
+    // Wrap around
+    if (newIndex < 0) {
+        newIndex = total - 1;
+    } else if (newIndex >= total) {
+        newIndex = 0;
+    }
+
+    const participant = AppState.filteredParticipants[newIndex];
+    if (participant) {
+        showParticipantDetails(participant, newIndex);
+        // Scroll to top of detail content
+        const contentElement = document.getElementById('participantDetailsContent');
+        if (contentElement) {
+            contentElement.scrollTop = 0;
+        }
+    }
+}
+
+// Update navigation info and button states
+function updateDetailNavigation() {
+    const total = AppState.filteredParticipants.length;
+    const current = AppState.currentParticipantIndex + 1;
+    const infoElement = document.getElementById('detailNavigationInfo');
+    const prevBtn = document.getElementById('prevParticipantBtn');
+    const nextBtn = document.getElementById('nextParticipantBtn');
+
+    if (AppState.isAddMode) {
+        if (infoElement) {
+            infoElement.textContent = 'New Participant';
+        }
+        if (prevBtn) prevBtn.disabled = true;
+        if (nextBtn) nextBtn.disabled = true;
+    } else {
+        if (infoElement) {
+            infoElement.textContent = total > 0 ? `${current} of ${total}` : '0 of 0';
+        }
+        if (prevBtn && nextBtn) {
+            prevBtn.disabled = false;
+            nextBtn.disabled = false;
+        }
+    }
+}
+
+// Update admin buttons visibility
+function updateAdminButtonsVisibility() {
+    const adminActionsHeader = document.getElementById('adminActionsHeader');
+    const editBtn = document.getElementById('editParticipantBtnHeader');
+    const deleteBtn = document.getElementById('deleteParticipantBtnHeader');
+    const addBtn = document.getElementById('addParticipantBtnHeader');
+    const saveBtn = document.getElementById('saveParticipantBtnHeader');
+    const cancelBtn = document.getElementById('cancelEditBtnHeader');
+    const prevBtn = document.getElementById('prevParticipantBtn');
+    const nextBtn = document.getElementById('nextParticipantBtn');
+    const navInfo = document.getElementById('detailNavigationInfo');
+
+    if (!adminActionsHeader) return;
+
+    if (AppState.isAdmin) {
+        adminActionsHeader.style.display = 'flex';
+
+        if (AppState.isEditMode || AppState.isAddMode) {
+            // Show save/cancel, hide edit/delete/add
+            if (editBtn) editBtn.style.display = 'none';
+            if (deleteBtn) deleteBtn.style.display = 'none';
+            if (addBtn) addBtn.style.display = 'none';
+            if (saveBtn) saveBtn.style.display = 'flex';
+            if (cancelBtn) cancelBtn.style.display = 'flex';
+            if (prevBtn) prevBtn.disabled = true;
+            if (nextBtn) nextBtn.disabled = true;
+        } else {
+            // Show edit/delete/add, hide save/cancel
+            if (editBtn) editBtn.style.display = 'flex';
+            if (deleteBtn) deleteBtn.style.display = 'flex';
+            if (addBtn) addBtn.style.display = 'flex';
+            if (saveBtn) saveBtn.style.display = 'none';
+            if (cancelBtn) cancelBtn.style.display = 'none';
+            if (prevBtn) prevBtn.disabled = false;
+            if (nextBtn) nextBtn.disabled = false;
+        }
+    } else {
+        adminActionsHeader.style.display = 'none';
+    }
+}
+
+// Add new participant
+function addNewParticipant() {
+    AppState.isAddMode = true;
+    AppState.isEditMode = false;
+    AppState.currentParticipant = {
+        name: '',
+        address: '',
+        idNumber: '',
+        number: '',
+        atoll: '',
+        location: '',
+        positions: '',
+        dhaaira: '',
+        id: ''
+    };
+    AppState.currentParticipantIndex = -1;
+
+    const modal = document.getElementById('participantDetailsModal');
+    const nameElement = document.getElementById('detailParticipantName');
+    if (nameElement) {
+        nameElement.textContent = 'Add New Participant';
+    }
+
+    updateDetailNavigation();
+    updateAdminButtonsVisibility();
+    renderParticipantDetails(AppState.currentParticipant);
+
+    if (modal) {
+        modal.classList.add('active');
+    }
+}
+
+// Enable edit mode
+function enableEditMode() {
+    if (!AppState.currentParticipant) return;
+
+    AppState.isEditMode = true;
+    AppState.isAddMode = false;
+    updateAdminButtonsVisibility();
+    renderParticipantDetails(AppState.currentParticipant);
+}
+
+// Cancel edit/add
+function cancelEdit() {
+    if (AppState.isAddMode) {
+        // If adding new, close the modal
+        hideParticipantDetails();
+    } else if (AppState.isEditMode && AppState.currentParticipant) {
+        // If editing, revert to view mode
+        AppState.isEditMode = false;
+        updateAdminButtonsVisibility();
+        renderParticipantDetails(AppState.currentParticipant);
+    }
+}
+
+// Save participant (add or update)
+async function saveParticipant() {
+    // Get all input fields dynamically from the detail view
+    const allInputs = document.querySelectorAll('#participantDetailsContent .detail-input, #participantDetailsContent input, #participantDetailsContent select');
+
+    const participantData = {};
+
+    // Collect all field values dynamically
+    allInputs.forEach(input => {
+        const fieldName = input.name || input.id.replace('detail-', '');
+        if (fieldName) {
+            if (input.type === 'checkbox') {
+                participantData[fieldName] = input.checked;
+            } else {
+                participantData[fieldName] = input.value.trim();
+            }
+        }
+    });
+
+    // Get name (required field)
+    const name = participantData.name || '';
+    if (!name) {
+        showToast('Name is required', 'error');
+        const nameInput = document.getElementById('detail-name');
+        nameInput ?.focus();
+        return;
+    }
+
+    // Handle aliases and special fields
+    const atoll = participantData.atoll || '';
+    const number = participantData.number || participantData.phone || participantData.mobile || participantData.contact || '';
+
+    // Normalize location for filtering (used by tabs)
+    let normalizedLocation = '';
+    if (atoll) {
+        const locLower = atoll.toLowerCase();
+        if (locLower.includes('dhuvaafaru') || locLower.includes('dhuvafaru')) {
+            normalizedLocation = 'Dhuvaafaru';
+        } else if (locLower.includes("male") || locLower.includes("malé")) {
+            normalizedLocation = "Male'";
+        } else {
+            normalizedLocation = atoll;
+        }
+    }
+
+    // Build complete participant data object with aliases
+    const finalParticipantData = {
+        ...participantData,
+        // Ensure aliases are set
+        phone: number,
+        island: atoll,
+        location: normalizedLocation,
+        // Preserve timestamps
+        createdAt: AppState.currentParticipant ?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+    };
+
+    if (AppState.isAddMode) {
+        // Add new participant
+        const maxId = Math.max(...AppState.participants.map(p => {
+            const id = p.id;
+            if (!id) return 0;
+            const numId = parseInt(id, 10);
+            return isNaN(numId) ? 0 : numId;
+        }), 0);
+
+        finalParticipantData.id = String(maxId + 1);
+        finalParticipantData.createdAt = new Date().toISOString();
+
+        AppState.participants.push(finalParticipantData);
+        showToast('Participant added successfully', 'success');
+    } else if (AppState.isEditMode && AppState.currentParticipant) {
+        // Update existing participant - preserve all existing fields and merge new ones
+        const participantIndex = AppState.participants.findIndex(p =>
+            String(p.id) === String(AppState.currentParticipant.id)
+        );
+
+        if (participantIndex >= 0) {
+            // Merge: keep all existing fields, update with new values
+            AppState.participants[participantIndex] = {
+                ...AppState.participants[participantIndex],
+                ...finalParticipantData,
+                id: AppState.participants[participantIndex].id, // Preserve original ID
+                createdAt: AppState.participants[participantIndex].createdAt || finalParticipantData.createdAt
+            };
+            showToast('Participant updated successfully', 'success');
+        }
+    }
+
+    // Save to Firestore
+    await saveParticipantsToFirestore();
+
+    // Refresh the view
+    filterAndRenderParticipants();
+
+    // Update detail view
+    AppState.isEditMode = false;
+    AppState.isAddMode = false;
+
+    // Find the participant in filtered list
+    const updatedParticipant = AppState.filteredParticipants.find(p =>
+        String(p.id) === String(finalParticipantData.id) ||
+        (p.name === finalParticipantData.name && (p.idNumber === finalParticipantData.idNumber || p.id === finalParticipantData.idNumber))
+    );
+
+    if (updatedParticipant) {
+        const newIndex = AppState.filteredParticipants.indexOf(updatedParticipant);
+        showParticipantDetails(updatedParticipant, newIndex);
+    } else {
+        hideParticipantDetails();
+    }
+}
+
+// Delete current participant
+async function deleteCurrentParticipant() {
+    if (!AppState.currentParticipant || !AppState.currentParticipant.id) {
+        showToast('No participant selected', 'error');
+        return;
+    }
+
+    showConfirmDialog(
+        'Delete Participant',
+        `Are you sure you want to delete "${AppState.currentParticipant.name}"? This action cannot be undone.`,
+        async () => {
+            const participantId = String(AppState.currentParticipant.id);
+            const index = AppState.participants.findIndex(p => String(p.id) === participantId);
+
+            if (index >= 0) {
+                // Remove from local state
+                AppState.participants.splice(index, 1);
+
+                // Delete from Firestore
+                if (db) {
+                    try {
+                        await db.collection(PARTICIPANTS_COLLECTION).doc(participantId).delete();
+                        console.log(`✅ Deleted participant ${participantId} from Firestore`);
+                    } catch (error) {
+                        console.error('Error deleting from Firestore:', error);
+                        // Continue anyway - we've already removed from local state
+                    }
+                }
+
+                // Update localStorage
+                if (AppState.participants.length > 0) {
+                    saveParticipantsToLocalStorage();
+                } else {
+                    localStorage.removeItem('dhuvaafaru_participants');
+                }
+
+                filterAndRenderParticipants();
+                showToast('Participant deleted successfully', 'success');
+                hideParticipantDetails();
+            }
+        }
+    );
 }
 
 // Confirmation Dialog
