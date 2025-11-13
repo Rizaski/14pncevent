@@ -1091,6 +1091,8 @@ function updateAdminUI() {
     const loginBtn = document.getElementById('adminLoginBtn');
     const logoutBtn = document.getElementById('adminLogoutBtn');
     const adminTab = document.querySelector('.admin-tab');
+    const exportBtn = document.getElementById('exportDataBtn');
+    const clearDataBtn = document.getElementById('clearDataBtn');
 
     if (AppState.isAdmin) {
         loginBtn.style.display = 'none';
@@ -1099,12 +1101,26 @@ function updateAdminUI() {
         if (adminTab) {
             adminTab.style.display = 'flex';
         }
+        // Show admin panel buttons
+        if (exportBtn) {
+            exportBtn.style.display = 'inline-flex';
+        }
+        if (clearDataBtn) {
+            clearDataBtn.style.display = 'inline-flex';
+        }
     } else {
         loginBtn.style.display = 'flex';
         logoutBtn.style.display = 'none';
         // Hide admin tab
         if (adminTab) {
             adminTab.style.display = 'none';
+        }
+        // Hide admin panel buttons
+        if (exportBtn) {
+            exportBtn.style.display = 'none';
+        }
+        if (clearDataBtn) {
+            clearDataBtn.style.display = 'none';
         }
         // If currently on admin tab, switch to master tab
         if (AppState.currentTab === 'admin') {
@@ -1410,6 +1426,12 @@ async function clearAllData() {
 
 // Export to Excel
 function exportToExcel() {
+    // Only allow export for admin users
+    if (!AppState.isAdmin) {
+        showToast('Access denied. Admin privileges required.', 'error');
+        return;
+    }
+
     if (AppState.participants.length === 0) {
         showToast('No data to export', 'error');
         return;
