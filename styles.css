@@ -408,11 +408,11 @@ body {
     /* Auto-fit columns to content */
 }
 
-/* Set minimum widths for columns to ensure readability */
+/* Set minimum widths for columns to ensure readability - auto-fit to content */
 .participants-table th:nth-child(1),
 .participants-table td:nth-child(1) {
     min-width: 20px;
-    width: 20px;
+    width: auto;
     text-align: center;
     padding: 0.75rem 0.25rem;
     /* Serial Number column */
@@ -420,31 +420,42 @@ body {
 
 .participants-table th:nth-child(2),
 .participants-table td:nth-child(2) {
-    min-width: 180px;
+    min-width: 120px;
+    width: auto;
     /* Name column */
 }
 
 .participants-table th:nth-child(3),
 .participants-table td:nth-child(3) {
-    min-width: 180px;
+    min-width: 120px;
+    width: auto;
     /* Address column */
 }
 
 .participants-table th:nth-child(4),
 .participants-table td:nth-child(4) {
-    min-width: 130px;
-    /* ID Number column */
+    min-width: 100px;
+    width: auto;
+    /* Location column */
 }
 
 .participants-table th:nth-child(5),
 .participants-table td:nth-child(5) {
-    min-width: 130px;
+    min-width: 100px;
+    width: auto;
+    /* ID Number column */
+}
+
+.participants-table th:nth-child(6),
+.participants-table td:nth-child(6) {
+    min-width: 100px;
+    width: auto;
     /* Number column */
 }
 
-/* Hide columns 6-9 from view (they're still in DOM for detail view) */
-.participants-table th:nth-child(n+6),
-.participants-table td:nth-child(n+6) {
+/* Hide columns 7-9 from view (they're still in DOM for detail view) */
+.participants-table th:nth-child(n+7),
+.participants-table td:nth-child(n+7) {
     display: none;
 }
 
@@ -1796,7 +1807,17 @@ body {
 
     .participants-table th:nth-child(4),
     .participants-table td:nth-child(4) {
-        min-width: 120px;
+        min-width: 100px;
+    }
+
+    .participants-table th:nth-child(5),
+    .participants-table td:nth-child(5) {
+        min-width: 100px;
+    }
+
+    .participants-table th:nth-child(6),
+    .participants-table td:nth-child(6) {
+        min-width: 100px;
     }
 
     .participants-table th:last-child,
@@ -2130,7 +2151,17 @@ body {
 
     .participants-table th:nth-child(4),
     .participants-table td:nth-child(4) {
-        min-width: 100px;
+        min-width: 90px;
+    }
+
+    .participants-table th:nth-child(5),
+    .participants-table td:nth-child(5) {
+        min-width: 90px;
+    }
+
+    .participants-table th:nth-child(6),
+    .participants-table td:nth-child(6) {
+        min-width: 90px;
     }
 
     .participants-table th:last-child,

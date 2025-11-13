@@ -839,6 +839,16 @@ function renderParticipants() {
                     </th>
                     <th>
                         <div class="th-content">
+                            <button class="sort-btn" data-sort="location">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="6 9 12 15 18 9"></polyline>
+                                </svg>
+                            </button>
+                            <span>Location</span>
+                        </div>
+                    </th>
+                    <th>
+                        <div class="th-content">
                             <button class="sort-btn" data-sort="idNumber">
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <polyline points="6 9 12 15 18 9"></polyline>
@@ -905,6 +915,7 @@ function renderParticipants() {
                             <td class="participant-serial-cell">${serialNumber}</td>
                             <td class="participant-name-cell">${escapeHtml(participant.name || '-')}</td>
                             <td>${escapeHtml(participant.address || '-')}</td>
+                            <td>${participant.location ? `<span class="location-badge ${participant.location === 'Dhuvaafaru' ? 'dhuvaafaru' : 'male'}">${escapeHtml(participant.location)}</span>` : '-'}</td>
                             <td>${escapeHtml(maskIdNumber(participant.idNumber || participant.id || '-'))}</td>
                             <td>${escapeHtml(maskPhoneNumber(participant.number || participant.phone || '-'))}</td>
                             <td class="hidden-column">${escapeHtml(participant.atoll || participant.island || participant.location || '-')}</td>
@@ -1614,7 +1625,7 @@ function renderParticipantDetails(participant) {
                 // Dropdown for Location
                 return `
                     <select class="detail-input" name="location" id="detail-location">
-                        <option value="">Select Location</option>
+                        <option value="" ${value === '' ? 'selected' : ''}>Blank</option>
                         <option value="Dhuvaafaru" ${value === 'Dhuvaafaru' ? 'selected' : ''}>Dhuvaafaru</option>
                         <option value="Male'" ${value === "Male'" ? 'selected' : ''}>Male'</option>
                     </select>
