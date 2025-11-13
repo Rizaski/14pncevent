@@ -1881,6 +1881,37 @@ async function saveParticipant() {
     };
 
     if (AppState.isAddMode) {
+        // Check for duplicate records before adding
+        const idNumber = finalParticipantData.idNumber || '';
+        const name = finalParticipantData.name || '';
+
+        // Check for duplicate by ID Number (if provided)
+        if (idNumber) {
+            const duplicateById = AppState.participants.find(p =>
+                p.idNumber && p.idNumber.toString().trim().toLowerCase() === idNumber.toString().trim().toLowerCase()
+            );
+            if (duplicateById) {
+                showToast(`Duplicate record found! A participant with ID Number "${idNumber}" already exists.`, 'error');
+                return;
+            }
+        }
+
+        // Check for duplicate by Name + ID Number combination (if both provided)
+        if (name && idNumber) {
+            const duplicateByNameAndId = AppState.participants.find(p =>
+                p.name && p.idNumber &&
+                p.name.toString().trim().toLowerCase() === name.toString().trim().toLowerCase() &&
+                p.idNumber.toString().trim().toLowerCase() === idNumber.toString().trim().toLowerCase()
+            );
+            if (duplicateByNameAndId) {
+                showToast(`Duplicate record found! A participant with Name "${name}" and ID Number "${idNumber}" already exists.`, 'error');
+                return;
+            }
+        }
+
+        // Show loading in detail view before saving
+        showDetailViewLoading();
+
         // Add new participant
         const maxId = Math.max(...AppState.participants.map(p => {
             const id = p.id;
@@ -1910,10 +1941,10 @@ async function saveParticipant() {
             };
             showToast('Participant updated successfully', 'success');
         }
-    }
 
-    // Show loading in detail view
-    showDetailViewLoading();
+        // Show loading in detail view before saving
+        showDetailViewLoading();
+    }
 
     // Save only the edited/added participant to Firestore (more efficient)
     await saveSingleParticipantToFirestore(finalParticipantData);
