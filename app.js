@@ -356,6 +356,62 @@ async function saveParticipantsToFirestore() {
     }
 }
 
+// Save a single participant to Firestore (optimized for edit/add operations)
+async function saveSingleParticipantToFirestore(participant) {
+    if (!db) {
+        // Fallback to localStorage if Firebase is not available
+        saveParticipantsToLocalStorage();
+        return;
+    }
+
+    try {
+        const participantId = String(participant.id);
+        if (!participantId) {
+            console.error('Cannot save participant without ID');
+            return;
+        }
+
+        const participantRef = db.collection(PARTICIPANTS_COLLECTION).doc(participantId);
+        await participantRef.set({
+            name: participant.name || '',
+            location: participant.location || '',
+            phone: participant.phone || participant.number || '',
+            email: participant.email || '',
+            idNumber: participant.idNumber || '',
+            number: participant.number || participant.phone || '',
+            address: participant.address || '',
+            atoll: participant.atoll || participant.island || participant.location || '',
+            island: participant.island || participant.location || '',
+            positions: participant.positions || '',
+            dhaaira: participant.dhaaira || '',
+            speedBoat: participant.speedBoat || '',
+            createdAt: participant.createdAt || new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        }, {
+            merge: true
+        });
+
+        // Also update localStorage as backup
+        saveParticipantsToLocalStorage();
+
+        console.log(`✓ Successfully saved participant ${participantId} to Firestore`);
+    } catch (error) {
+        // Check if it's a permissions error
+        if (error.code === 'permission-denied' || error.message.includes('permissions') || error.message.includes('Missing or insufficient permissions')) {
+            // Silently fallback to localStorage
+            saveParticipantsToLocalStorage();
+            return;
+        }
+
+        // Only log non-permission errors
+        console.error('Error saving participant to Firestore:', error);
+        showToast('Error saving to cloud. Data saved locally.', 'info');
+
+        // Fallback to localStorage
+        saveParticipantsToLocalStorage();
+    }
+}
+
 // Fallback: Load participants from local storage
 function loadParticipantsFromLocalStorage() {
     const stored = localStorage.getItem('dhuvaafaru_participants');
@@ -1861,8 +1917,8 @@ async function saveParticipant() {
     // Show loading in detail view
     showDetailViewLoading();
 
-    // Save to Firestore
-    await saveParticipantsToFirestore();
+    // Save only the edited/added participant to Firestore (more efficient)
+    await saveSingleParticipantToFirestore(finalParticipantData);
 
     // Update edit/add modes before refreshing
     AppState.isEditMode = false;
