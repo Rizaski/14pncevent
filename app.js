@@ -1437,14 +1437,15 @@ function exportToExcel() {
         return;
     }
 
-    const data = AppState.participants.map(p => ({
+    const data = AppState.participants.map((p, index) => ({
+        '#': index + 1,
         'Name': p.name || '',
+        'Address': p.address || '',
         'ID Number': p.idNumber || p.id || '',
         'Number': p.number || p.phone || '',
-        'Address': p.address || '',
-        'Atoll / Island': p.atoll || p.island || p.location || '',
-        'Positions': p.positions || '',
-        'Dhaaira': p.dhaaira || ''
+        'Atoll / Island': p.atoll || p.island || 'Raa. Dhuvaafaru',
+        'Location': p.location || '',
+        'Speed Boat': p.speedBoat || ''
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(data);
@@ -1594,7 +1595,7 @@ function renderParticipantDetails(participant) {
         {
             key: 'speedBoat',
             label: 'Speed Boat',
-            value: participant.speedBoat || participant['Speed Boat'] || participant['speed boat'] || participant['SpeedBoat'] || 'XSpeed'
+            value: participant.speedBoat || participant['Speed Boat'] || participant['speed boat'] || participant['SpeedBoat'] || ''
         }
     ];
 
@@ -1896,7 +1897,7 @@ async function saveParticipant() {
         atoll: atoll, // Ensure atoll is set with default
         location: normalizedLocation,
         // Map otherBoat field to speedBoat (field name changed but data structure uses speedBoat)
-        speedBoat: participantData.otherBoat || participantData.speedBoat || 'XSpeed', // Default to XSpeed
+        speedBoat: participantData.otherBoat || participantData.speedBoat || '', // Default to blank
         // Preserve timestamps
         createdAt: AppState.currentParticipant.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString()
