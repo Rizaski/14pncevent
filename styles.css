@@ -1101,6 +1101,11 @@ body {
     padding: 1rem;
 }
 
+/* Confirmation dialog should appear above other modals */
+#confirmDialog {
+    z-index: 2000;
+}
+
 .modal.active {
     display: flex;
 }

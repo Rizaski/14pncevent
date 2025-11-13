@@ -1399,6 +1399,25 @@ function hideLoading() {
     // This function is kept for consistency but renderParticipants handles the display
 }
 
+// Show loading in detail view
+function showDetailViewLoading() {
+    const contentElement = document.getElementById('participantDetailsContent');
+    if (contentElement) {
+        contentElement.innerHTML = `
+            <div class="loading-spinner" style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 200px;">
+                <div class="spinner"></div>
+                <p style="margin-top: 1rem; color: var(--text-secondary);">Saving changes...</p>
+            </div>
+        `;
+    }
+}
+
+// Hide loading in detail view
+function hideDetailViewLoading() {
+    // Loading will be replaced by renderParticipantDetails() content
+    // This function is kept for consistency but renderParticipantDetails handles the display
+}
+
 function showToast(message, type = 'info') {
     const toast = document.getElementById('toast');
     toast.textContent = message;
@@ -1839,17 +1858,20 @@ async function saveParticipant() {
         }
     }
 
+    // Show loading in detail view
+    showDetailViewLoading();
+
     // Save to Firestore
     await saveParticipantsToFirestore();
+
+    // Update edit/add modes before refreshing
+    AppState.isEditMode = false;
+    AppState.isAddMode = false;
 
     // Refresh the view
     filterAndRenderParticipants();
 
-    // Update detail view
-    AppState.isEditMode = false;
-    AppState.isAddMode = false;
-
-    // Find the participant in filtered list
+    // Find the participant in filtered list and show detail view
     const updatedParticipant = AppState.filteredParticipants.find(p =>
         String(p.id) === String(finalParticipantData.id) ||
         (p.name === finalParticipantData.name && (p.idNumber === finalParticipantData.idNumber || p.id === finalParticipantData.idNumber))
@@ -1857,9 +1879,31 @@ async function saveParticipant() {
 
     if (updatedParticipant) {
         const newIndex = AppState.filteredParticipants.indexOf(updatedParticipant);
-        showParticipantDetails(updatedParticipant, newIndex);
+        // Ensure modal is open and show updated participant details
+        setTimeout(() => {
+            showParticipantDetails(updatedParticipant, newIndex);
+        }, 100);
     } else {
-        hideParticipantDetails();
+        // If participant not found in filtered list, try to find in all participants
+        const allParticipant = AppState.participants.find(p =>
+            String(p.id) === String(finalParticipantData.id)
+        );
+        if (allParticipant) {
+            // Refresh filter to include this participant
+            filterAndRenderParticipants();
+            setTimeout(() => {
+                const foundIndex = AppState.filteredParticipants.findIndex(p =>
+                    String(p.id) === String(finalParticipantData.id)
+                );
+                if (foundIndex >= 0) {
+                    showParticipantDetails(AppState.filteredParticipants[foundIndex], foundIndex);
+                } else {
+                    hideDetailViewLoading();
+                }
+            }, 100);
+        } else {
+            hideDetailViewLoading();
+        }
     }
 }
 
