@@ -1600,11 +1600,9 @@ function renderParticipantDetails(participant) {
                 // Dropdown for Speed Boat
                 return `
                     <select class="detail-input" name="otherBoat" id="detail-otherBoat">
-                        <option value="">Select Other Boat</option>
-                        <option value="Boat 1" ${value === 'Boat 1' ? 'selected' : ''}>Boat 1</option>
-                        <option value="Boat 2" ${value === 'Boat 2' ? 'selected' : ''}>Boat 2</option>
-                        <option value="Boat 3" ${value === 'Boat 3' ? 'selected' : ''}>Boat 3</option>
-                        <option value="None" ${value === 'None' ? 'selected' : ''}>None</option>
+                        <option value="">Select Speed Boat</option>
+                        <option value="XSpeed" ${value === 'XSpeed' ? 'selected' : ''}>XSpeed</option>
+                        <option value="Other" ${value === 'Other' ? 'selected' : ''}>Other</option>
                     </select>
                 `;
             } else if (fieldKey === 'number') {
@@ -1876,7 +1874,7 @@ async function saveParticipant() {
         atoll: atoll, // Ensure atoll is set with default
         location: normalizedLocation,
         // Map otherBoat field to speedBoat (field name changed but data structure uses speedBoat)
-        speedBoat: participantData.otherBoat || participantData.speedBoat || 'XSpeed',
+        speedBoat: participantData.otherBoat || participantData.speedBoat || 'XSpeed', // Default to XSpeed
         // Preserve timestamps
         createdAt: AppState.currentParticipant.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString()
