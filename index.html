@@ -18,6 +18,11 @@
             box-sizing: border-box;
         }
 
+        html {
+            height: 100%;
+            overflow-y: auto;
+        }
+
         :root {
             --primary-color: #0069AA;
             --primary-dark: #005288;
@@ -40,8 +45,10 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            overflow: hidden;
+            overflow-y: auto;
+            overflow-x: hidden;
             position: relative;
+            padding: 2rem 1rem;
         }
 
         /* Animated Background */
@@ -122,6 +129,8 @@
             padding: 2rem;
             max-width: 800px;
             width: 100%;
+            margin: auto;
+            min-height: fit-content;
         }
 
         /* Logo Animation */
